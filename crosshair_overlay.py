@@ -160,18 +160,13 @@ class CrosshairOverlay:
 
     def _check_game_status(self):
         """Periodically checks if the game process is running and updates overlay visibility."""
-        is_running = self._is_process_running(self.GAME_PROCESS_NAME)
-
-        if is_running and not self.game_running:
-            print(f"{self.GAME_PROCESS_NAME} detected. Showing overlay.")
+        # Remove game process check to always show overlay
+        if not self.game_running:
+            print("Showing overlay without game process check.")
             self.game_running = True
             self.root.deiconify() # Show the window
             self.draw_crosshair() # Initial draw
-        elif not is_running and self.game_running:
-            print(f"{self.GAME_PROCESS_NAME} not detected. Hiding overlay.")
-            self.game_running = False
-            self.root.withdraw() # Hide the window
-        
+
         # Schedule the next check
         self.root.after(self.game_check_interval, self._check_game_status)
 
@@ -196,7 +191,11 @@ class CrosshairOverlay:
             "click_spread_enabled": False,
             "click_spread_amount": 5,
             "click_spread_speed": 3,
-            "click_spread_button": "left"
+            "click_spread_button": "left",
+            "jitter_enabled": True,
+            "jitter_amount": 5,
+            "jitter_speed": 1,
+            "jitter_offset": 1
         }
 
         if not os.path.exists(self.config_path):
@@ -242,6 +241,12 @@ class CrosshairOverlay:
         self.click_spread_amount = config["click_spread_amount"]
         self.click_spread_speed = config["click_spread_speed"]
         self.click_spread_button = config["click_spread_button"]
+        #jitter parameters
+        self.jitter_enabled = config["jitter_enabled"]
+        self.jitter_amount = config["jitter_amount"]
+        self.jitter_speed = config["jitter_speed"]
+        self.jitter_offset = config["jitter_offset"]
+        
 
         # Store base values for dynamic spread calculation
         self.base_gap = self.gap
@@ -270,7 +275,8 @@ class CrosshairOverlay:
         # Add jitter offset if jitter enabled and mouse button pressed
         jitter_x = 0
         jitter_y = 0
-        if self.jitter_enabled and self.mouse_buttons_pressed:
+        # Change condition to apply jitter if enabled regardless of mouse buttons pressed
+        if self.jitter_enabled:
             max_jitter = int(self.jitter_offset)
             jitter_x = self.random.randint(-max_jitter, max_jitter)
             jitter_y = self.random.randint(-max_jitter, max_jitter)
