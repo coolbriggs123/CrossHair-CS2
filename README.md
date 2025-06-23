@@ -1,9 +1,8 @@
-```markdown
-# 🎯 Crosshair Overlay (CS2 Compatible)
+# ![](https://i.imgur.com/C0iL7TK.png)Crosshair Overlay (CS2)
 
 **Crosshair Overlay** is a dynamic and customizable crosshair overlay designed primarily for CS2. It provides a lightweight fullscreen overlay that is click-through, supports movement-based spread, counter-strafe logic, click jitter, and more — all configurable through a built-in UI.
 
-https://i.imgur.com/0Z2PgAi.png
+
 
 ---
 
@@ -21,19 +20,13 @@ https://i.imgur.com/0Z2PgAi.png
 
 ---
 
-## 🖥️ Screenshots
-
-> Include images of the overlay and the customization menu here for best effect.
-
----
-
 ## 🚀 Getting Started
 
 ### 📅 Installation
 
 1. Download `crosshair_overlay.exe` from the [Releases](https://github.com/yourusername/crosshair-overlay/releases).
-2. Launch **CS2**.
-3. Run `crosshair_overlay.exe`.
+2. Run `crosshair_overlay.exe`.
+3. Launch **CS2**.
 4. Press `F1` to open the crosshair customization menu.
 
 ---
@@ -67,23 +60,12 @@ All settings are saved in `config.json`. You can edit this manually or through t
 
 ---
 
-## 📁 File Structure
-
-
-crosshair_overlay.exe       # Compiled executable
-config.json                 # Saved config
-assets/icon.png             # App icon (optional)
-README.md                   # This file
-
-
----
-
 ## ✅ TODO
 
-- [ ] Add screenshots/GIFs
 - [ ] Add Linux support
 - [ ] Add preset profiles
 - [ ] Export/import configs
+- [ ] Add jitter controls
 
 ---
 
@@ -95,6 +77,6 @@ MIT License. See [LICENSE](./LICENSE).
 
 ## ✨ Credits
 
-Made by [Your Name / Alias].  
+Made by Coolbriggs.  
 A fully dynamic and lightweight overlay for CS2 players.
-```
+
