@@ -11,8 +11,9 @@ class CustomizationMenu(tk.Toplevel):
         self.overlay_instance = overlay_instance
         self.config_path = config_path
         self.title("Crosshair Customization")
-        self.geometry("300x900") # Increased size for new options
-        self.resizable(False, False) # Prevent resizing
+        # Remove fixed geometry to allow dynamic resizing
+        # self.geometry("300x900") # Increased size for new options
+        self.resizable(True, True) # Allow resizing
         self.attributes('-topmost', True) # Keep menu on top
 
         # Bind the close button (X) to our custom close method
@@ -64,7 +65,8 @@ class CustomizationMenu(tk.Toplevel):
             # Jitter settings
             "jitter_enabled": True,
             "jitter_amount": 2,
-            "jitter_speed": 0.1
+            "jitter_speed": 0.1,
+            "jitter_offset": 1
         }
 
     def _setup_variables(self):
@@ -93,6 +95,7 @@ class CustomizationMenu(tk.Toplevel):
         self.jitter_enabled_var = tk.BooleanVar(value=self.config.get("jitter_enabled", True))
         self.jitter_amount_var = tk.IntVar(value=self.config.get("jitter_amount", 2))
         self.jitter_speed_var = tk.DoubleVar(value=self.config.get("jitter_speed", 0.1))
+        self.jitter_offset_var = tk.IntVar(value=self.config.get("jitter_offset", 1))
 
 
     def _create_widgets(self):
@@ -103,19 +106,19 @@ class CustomizationMenu(tk.Toplevel):
         # Helper for creating labeled spinboxes
         def create_spinbox(parent, label_text, var, from_=0, to_=100, increment=1):
             frame = ttk.Frame(parent)
-            frame.pack(fill=tk.X, pady=5)
-            ttk.Label(frame, text=label_text).pack(side=tk.LEFT)
-            spinbox = ttk.Spinbox(frame, textvariable=var, width=5, from_=from_, to_=to_, increment=increment,
+            frame.pack(fill=tk.BOTH, expand=True, pady=5)
+            ttk.Label(frame, text=label_text).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            spinbox = ttk.Spinbox(frame, textvariable=var, from_=from_, to_=to_, increment=increment,
                                   command=self._update_and_save_config) # Instant update
-            spinbox.pack(side=tk.RIGHT)
+            spinbox.pack(side=tk.RIGHT, fill=tk.X, expand=True)
             # Also trace changes from direct text input (e.g., typing a number)
             var.trace_add('write', lambda *args: self._update_and_save_config())
             return spinbox
 
         # Crosshair Color
         color_frame = ttk.Frame(main_frame)
-        color_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(color_frame, text="Crosshair Color:").pack(side=tk.LEFT)
+        color_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        ttk.Label(color_frame, text="Crosshair Color:").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.crosshair_color_button = ttk.Button(color_frame, text="Pick Color", command=lambda: self._pick_color("crosshair_color", self.crosshair_color_var))
         self.crosshair_color_button.pack(side=tk.RIGHT)
         self.crosshair_color_preview = tk.Label(color_frame, width=2, relief="sunken", bd=1)
@@ -123,8 +126,8 @@ class CustomizationMenu(tk.Toplevel):
 
         # Outline Color
         outline_color_frame = ttk.Frame(main_frame)
-        outline_color_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(outline_color_frame, text="Outline Color:").pack(side=tk.LEFT)
+        outline_color_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        ttk.Label(outline_color_frame, text="Outline Color:").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.outline_color_button = ttk.Button(outline_color_frame, text="Pick Color", command=lambda: self._pick_color("outline_color", self.outline_color_var))
         self.outline_color_button.pack(side=tk.RIGHT)
         self.outline_color_preview = tk.Label(outline_color_frame, width=2, relief="sunken", bd=1)
@@ -138,64 +141,65 @@ class CustomizationMenu(tk.Toplevel):
 
         # Show Outline Checkbox
         ttk.Checkbutton(main_frame, text="Show Outline", variable=self.show_outline_var,
-                        command=self._update_and_save_config).pack(anchor=tk.W, pady=5)
+                        command=self._update_and_save_config).pack(anchor=tk.W, pady=5, fill=tk.X)
 
         # Movement Spread Section
         movement_spread_frame = ttk.LabelFrame(main_frame, text="Movement Spread (WASD)", padding="10")
-        movement_spread_frame.pack(fill=tk.X, pady=10)
+        movement_spread_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
         ttk.Checkbutton(movement_spread_frame, text="Enable Movement Spread", variable=self.movement_spread_enabled_var,
-                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2)
+                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2, fill=tk.X)
 
         create_spinbox(movement_spread_frame, "Spread Amount:", self.movement_spread_amount_var, from_=0, to_=50)
         create_spinbox(movement_spread_frame, "Spread Speed:", self.movement_spread_speed_var, from_=1, to_=10)
 
         # Counter-Strafe Section
         counter_strafe_frame = ttk.LabelFrame(main_frame, text="Counter-Strafe Accuracy", padding="10")
-        counter_strafe_frame.pack(fill=tk.X, pady=10)
+        counter_strafe_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
         ttk.Checkbutton(counter_strafe_frame, text="Enable Counter-Strafe", variable=self.counter_strafe_enabled_var,
-                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2)
+                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2, fill=tk.X)
 
         create_spinbox(counter_strafe_frame, "Reduction Speed:", self.counter_strafe_reduction_speed_var, from_=1, to_=20)
         create_spinbox(counter_strafe_frame, "Min Spread:", self.counter_strafe_min_spread_var, from_=0, to_=10)
 
         # Click Spread Section
         click_spread_frame = ttk.LabelFrame(main_frame, text="Click Spread", padding="10")
-        click_spread_frame.pack(fill=tk.X, pady=10)
+        click_spread_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
         ttk.Checkbutton(click_spread_frame, text="Enable Click Spread", variable=self.click_spread_enabled_var,
-                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2)
+                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2, fill=tk.X)
 
         create_spinbox(click_spread_frame, "Spread Amount:", self.click_spread_amount_var, from_=0, to_=50)
         create_spinbox(click_spread_frame, "Spread Speed:", self.click_spread_speed_var, from_=1, to_=10)
 
         # Jitter Section
         jitter_frame = ttk.LabelFrame(main_frame, text="Jitter Settings", padding="10")
-        jitter_frame.pack(fill=tk.X, pady=10)
+        jitter_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
         ttk.Checkbutton(jitter_frame, text="Enable Jitter", variable=self.jitter_enabled_var,
-                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2)
+                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2, fill=tk.X)
 
         def create_jitter_spinbox(parent, label_text, var, from_, to_, increment=1):
             frame = ttk.Frame(parent)
-            frame.pack(fill=tk.X, pady=5)
-            ttk.Label(frame, text=label_text).pack(side=tk.LEFT)
-            spinbox = ttk.Spinbox(frame, textvariable=var, width=5, from_=from_, to_=to_, increment=increment,
+            frame.pack(fill=tk.BOTH, expand=True, pady=5)
+            ttk.Label(frame, text=label_text).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            spinbox = ttk.Spinbox(frame, textvariable=var, from_=from_, to_=to_, increment=increment,
                                   command=self._update_and_save_config)
-            spinbox.pack(side=tk.RIGHT)
+            spinbox.pack(side=tk.RIGHT, fill=tk.X, expand=True)
             var.trace_add('write', lambda *args: self._update_and_save_config())
             return spinbox
 
         create_jitter_spinbox(jitter_frame, "Jitter Amount (pixels):", self.jitter_amount_var, from_=0, to_=20)
-        create_jitter_spinbox(jitter_frame, "Jitter Speed:", self.jitter_speed_var, from_=1, to_=10)
+        create_jitter_spinbox(jitter_frame, "Jitter Speed:", self.jitter_speed_var, from_=1, to_=10, increment=0.01)
+        create_jitter_spinbox(jitter_frame, "Jitter Offset:", self.jitter_offset_var, from_=0, to_=10)
 
 
         # Close Button
-        ttk.Button(main_frame, text="Close Menu", command=self._on_close).pack(pady=5)
+        ttk.Button(main_frame, text="Close Menu", command=self._on_close).pack(pady=5, fill=tk.X)
 
         # Close App Button
-        ttk.Button(main_frame, text="Close App", command=self._close_app).pack(pady=5)
+        ttk.Button(main_frame, text="Close App", command=self._close_app).pack(pady=5, fill=tk.X)
 
     def _close_app(self):
         """Closes the entire application by calling overlay's quit_overlay."""
@@ -228,6 +232,7 @@ class CustomizationMenu(tk.Toplevel):
         self.jitter_enabled_var.set(self.config.get("jitter_enabled", True))
         self.jitter_amount_var.set(self.config.get("jitter_amount", 2))
         self.jitter_speed_var.set(self.config.get("jitter_speed", 1))
+        self.jitter_offset_var.set(self.config.get("jitter_offset", 1))
         self._update_color_previews()
 
     def _update_color_previews(self):
