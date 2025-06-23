@@ -24,7 +24,7 @@
 
 ### 📅 Installation
 
-1. Download `crosshair_overlay.exe` from the [Releases](https://github.com/yourusername/crosshair-overlay/releases).
+1. Download `crosshair_overlay.exe` from the [Releases](https://github.com/coolbriggs123/CrossHair-CS2/releases/tag/Release1.0).
 2. Run `crosshair_overlay.exe`.
 3. Launch **CS2**.
 4. Press `F1` to open the crosshair customization menu.
