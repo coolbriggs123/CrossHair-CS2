@@ -96,6 +96,14 @@ class CrosshairOverlay:
         self.jitter_speed = 0.1  # pixels per frame increase rate
         self.jitter_offset = 0.0  # current jitter offset magnitude
 
+        # New crouch spread parameters
+        self.crouch_spread_enabled = False
+        self.crouch_spread_amount = 5
+        self.crouch_spread_speed = 2
+
+        # New jitter mode parameter: "random", "up", "sideways"
+        self.jitter_mode = "random"
+
         # Game status tracking
         self.game_running = False
         self.game_check_interval = 1000 # Check every 1 second
@@ -110,6 +118,9 @@ class CrosshairOverlay:
         self.keyboard_listener_thread.start()
         print("pynput keyboard listener started.")
 
+        # Track ctrl key state for crouch spread
+        self.ctrl_pressed = False
+
         # New: pynput mouse listener setup
         self.mouse_listener = mouse.Listener(
             on_click=self._pynput_on_click
@@ -119,6 +130,9 @@ class CrosshairOverlay:
         self.mouse_listener_thread.start()
         print("pynput mouse listener started.")
 
+
+        # Clickthrough enabled flag
+        self.clickthrough_enabled = True
 
         # Apply platform-specific settings for click-through
         if sys.platform == "win32":
@@ -137,18 +151,15 @@ class CrosshairOverlay:
 
     def _setup_windows_overlay(self):
         """Applies Windows-specific settings for click-through."""
-        # Get the window handle (HWND) of the Tkinter window
-        hwnd = user32.GetParent(self.root.winfo_id()) # winfo_id() gets the HWND
-
-        # Get current extended style
+        hwnd = user32.GetParent(self.root.winfo_id())
         ex_style = user32.GetWindowLongA(hwnd, GWL_EXSTYLE)
+        
+        if self.clickthrough_enabled:
+            new_style = ex_style | WS_EX_LAYERED | WS_EX_TRANSPARENT
+        else:
+            new_style = (ex_style | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT
 
-        # Set new extended style: layered and transparent
-        # WS_EX_LAYERED enables per-pixel alpha blending (though we use transparentcolor here)
-        # WS_EX_TRANSPARENT makes the window click-through
-        user32.SetWindowLongA(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
-
-        # Set window to be always on top (redundant with Tkinter's -topmost but good for robustness)
+        user32.SetWindowLongA(hwnd, GWL_EXSTYLE, new_style)
         user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
 
     def _is_process_running(self, process_name):
@@ -192,10 +203,18 @@ class CrosshairOverlay:
             "click_spread_amount": 5,
             "click_spread_speed": 3,
             "click_spread_button": "left",
+            # New crouch spread settings
+            "crouch_spread_enabled": False,
+            "crouch_spread_amount": 5,
+            "crouch_spread_speed": 2,
+            # Jitter settings
             "jitter_enabled": True,
             "jitter_amount": 5,
             "jitter_speed": 1,
-            "jitter_offset": 1
+            "jitter_offset": 1,
+            "jitter_mode": "random",
+            # New clickthrough setting
+            "clickthrough_enabled": True
         }
 
         if not os.path.exists(self.config_path):
@@ -241,13 +260,19 @@ class CrosshairOverlay:
         self.click_spread_amount = config["click_spread_amount"]
         self.click_spread_speed = config["click_spread_speed"]
         self.click_spread_button = config["click_spread_button"]
-        #jitter parameters
+        # Crouch Spread parameters
+        self.crouch_spread_enabled = config.get("crouch_spread_enabled", False)
+        self.crouch_spread_amount = config.get("crouch_spread_amount", 5)
+        self.crouch_spread_speed = config.get("crouch_spread_speed", 2)
+        # jitter parameters
         self.jitter_enabled = config["jitter_enabled"]
         self.jitter_amount = config["jitter_amount"]
         self.jitter_speed = config["jitter_speed"]
         self.jitter_offset = config["jitter_offset"]
+        self.jitter_mode = config.get("jitter_mode", "random")
+        # Clickthrough parameter
+        self.clickthrough_enabled = config.get("clickthrough_enabled", True)
         
-
         # Store base values for dynamic spread calculation
         self.base_gap = self.gap
         # Renamed self.base_length to self.base_segment_length
@@ -278,8 +303,19 @@ class CrosshairOverlay:
         # Change condition to apply jitter if enabled regardless of mouse buttons pressed
         if self.jitter_enabled:
             max_jitter = int(self.jitter_offset)
-            jitter_x = self.random.randint(-max_jitter, max_jitter)
-            jitter_y = self.random.randint(-max_jitter, max_jitter)
+            if self.jitter_mode == "random":
+                jitter_x = self.random.randint(-max_jitter, max_jitter)
+                jitter_y = self.random.randint(-max_jitter, max_jitter)
+            elif self.jitter_mode == "up":
+                jitter_x = 0
+                jitter_y = -self.random.randint(0, max_jitter)
+            elif self.jitter_mode == "sideways":
+                jitter_x = self.random.randint(-max_jitter, max_jitter)
+                jitter_y = 0
+            else:
+                # Default to random if unknown mode
+                jitter_x = self.random.randint(-max_jitter, max_jitter)
+                jitter_y = self.random.randint(-max_jitter, max_jitter)
 
         center_x += jitter_x
         center_y += jitter_y
@@ -356,6 +392,10 @@ class CrosshairOverlay:
             # Special keys (e.g., Shift, Control) don't have a .char attribute
             key_char = str(key).replace('Key.', '').lower() # e.g., 'Key.shift' -> 'shift'
 
+        # Track ctrl key state for crouch spread
+        if key_char == "ctrl_l" or key_char == "ctrl_r" or key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
+            self.ctrl_pressed = True
+
         if key_char in ['w', 'a', 's', 'd']:
             # Schedule the update on the Tkinter main thread
             self.root.after_idle(lambda: self._handle_wasd_press(key_char))
@@ -366,6 +406,10 @@ class CrosshairOverlay:
             key_char = key.char.lower()
         except AttributeError:
             key_char = str(key).replace('Key.', '').lower()
+
+        # Track ctrl key state for crouch spread
+        if key_char == "ctrl_l" or key_char == "ctrl_r" or key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
+            self.ctrl_pressed = False
 
         if key_char in ['w', 'a', 's', 'd']:
             # Schedule the update on the Tkinter main thread
@@ -446,9 +490,27 @@ class CrosshairOverlay:
                 click_target_spread = self.click_spread_amount
             elif trigger_button == "both" and ("left" in self.mouse_buttons_pressed or "right" in self.mouse_buttons_pressed):
                 click_target_spread = self.click_spread_amount
+
+        crouch_target_spread = 0
+        if self.crouch_spread_enabled and self.ctrl_pressed:
+            # Reduce spread by crouch_spread_amount but not below zero
+            crouch_target_spread = -self.crouch_spread_amount
         
-        # The overall target spread is the maximum of movement spread and click spread
-        self.target_spread_offset = max(movement_target_spread, click_target_spread)
+        # The overall target spread is the maximum of movement spread and click spread, then adjusted by crouch spread
+        base_spread = max(movement_target_spread, click_target_spread)
+        self.target_spread_offset = max(base_spread + crouch_target_spread, 0)
+
+    def _apply_clickthrough_setting(self):
+        """Apply the clickthrough window style based on current setting."""
+        if sys.platform == "win32":
+            hwnd = user32.GetParent(self.root.winfo_id())
+            ex_style = user32.GetWindowLongA(hwnd, GWL_EXSTYLE)
+            if self.clickthrough_enabled:
+                new_style = ex_style | WS_EX_LAYERED | WS_EX_TRANSPARENT
+            else:
+                new_style = (ex_style | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT
+            user32.SetWindowLongA(hwnd, GWL_EXSTYLE, new_style)
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
 
     def update_overlay(self):
         """Redraws the crosshair and schedules the next update."""
