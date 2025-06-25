@@ -63,9 +63,10 @@ All settings are saved in `config.json`. You can edit this manually or through t
 ## ✅ TODO
 
 - [ ] Add Linux support
-- [ ] Add preset profiles
-- [ ] Export/import configs
-- [ ] Add jitter controls
+- ✅ Add preset profiles
+- ✅ Export/import configs
+- ✅ Add jitter controls
+- [ ] Add CS2 sprays
 
 ---
 
@@ -79,4 +80,5 @@ MIT License. See [LICENSE](./LICENSE).
 
 Made by Coolbriggs.  
 A fully dynamic and lightweight overlay for CS2 players.
+Join the [Discord](https://discord.gg/PCawAVnhMH)!
 
