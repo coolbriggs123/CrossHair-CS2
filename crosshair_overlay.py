@@ -40,6 +40,29 @@ class CrosshairOverlay:
         import random
         self.random = random
 
+        # Initialize base values before they're used
+        self.base_gap = 0
+        self.base_segment_length = 0
+        self.current_gap = 0
+        self.current_length = 0
+        self.target_spread_offset = 0
+        
+        # Initialize jitter variables
+        self.jitter_x = 0
+        self.jitter_y = 0
+        self.jitter_offset = 0
+        self.jitter_direction_x = 1
+        self.jitter_direction_y = 1
+
+        # Initialize recoil variables
+        self.recoil_offset = 0
+        self.target_recoil_offset = 0
+        self.recoil_amount = 10  # Pixels to move up when shooting
+        self.recoil_speed = 0.5  # Speed of recoil movement
+        self.recoil_recovery_speed = 0.2  # Speed of returning to original position
+
+        # ... rest of __init__ ...
+
         self.root = tk.Tk()
         self.root.withdraw() # Hide the main window initially
 
@@ -59,7 +82,7 @@ class CrosshairOverlay:
 
         # Bind escape key to quit and F1 to open customization menu
         # These bindings work because the Tkinter window is the one receiving them
-        # Remove Escape key binding to quit_overlay to disable global close via Escape
+        # Remove Escape key binding to disable global close via Escape
         # self.root.bind('<Escape>', lambda e: self.quit_overlay())
         self.root.bind('<F1>', self._toggle_customization_menu)
 
@@ -77,18 +100,63 @@ class CrosshairOverlay:
         self.global_keyboard_listener_thread.daemon = True
         self.global_keyboard_listener_thread.start()
 
+        # Enhanced input tracking
+        self.input_state = {
+            'keys': set(),          # Currently pressed keys
+            'mouse': set(),         # Currently pressed mouse buttons
+            'modifiers': set(),     # Currently pressed modifier keys
+            'last_key': None,       # Last key pressed
+            'last_mouse': None,     # Last mouse button pressed
+            'mouse_position': (0, 0) # Current mouse position
+        }
+
+        # Enhanced key bindings configuration
+        self.key_bindings = {
+            'toggle_menu': keyboard.Key.f1,
+            'quit': keyboard.Key.esc,
+            'movement': {
+                'forward': 'w',
+                'backward': 's',
+                'left': 'a',
+                'right': 'd'
+            },
+            'actions': {
+                'crouch': keyboard.Key.ctrl,
+                'jump': keyboard.Key.space,
+                'shoot': {
+                    'primary': mouse.Button.left,
+                    'secondary': mouse.Button.right
+                }
+            }
+        }
+
+        # Create reverse mapping for movement keys
+        self.movement_key_map = {
+            'w': 'forward',
+            's': 'backward',
+            'a': 'left',
+            'd': 'right'
+        }
+
+        # Enhanced input listeners
+        self._setup_input_listeners()
+
         # Track if the menu is open to prevent multiple instances
         self.menu_open = False
         self.customization_menu = None
 
         # Dynamic Spread state variables
         self.current_spread_offset = 0
-        self.target_spread_offset = 0
         self.wasd_keys_pressed = set() # To track currently pressed WASD keys
         self.opposite_keys = {'w': 's', 's': 'w', 'a': 'd', 'd': 'a'}
         self.is_counter_strafing = False
         self.last_movement_key = None # To help with counter-strafe logic
         self.mouse_buttons_pressed = set() # New: To track currently pressed mouse buttons
+
+        # Add lerping variables
+        self.current_gap = self.base_gap
+        self.current_length = self.base_segment_length
+        self.lerp_speed = 0.2  # Adjust this value for faster/smoother transitions
 
         # Jitter parameters
         self.jitter_enabled = True
@@ -97,9 +165,10 @@ class CrosshairOverlay:
         self.jitter_offset = 0.0  # current jitter offset magnitude
 
         # New crouch spread parameters
-        self.crouch_spread_enabled = False
-        self.crouch_spread_amount = 5
-        self.crouch_spread_speed = 2
+        # Removed crouch spread parameters as per user request
+        # self.crouch_spread_enabled = False
+        # self.crouch_spread_amount = 5
+        # self.crouch_spread_speed = 2
 
         # New jitter mode parameter: "random", "up", "sideways"
         self.jitter_mode = "random"
@@ -110,23 +179,25 @@ class CrosshairOverlay:
 
         # pynput keyboard listener setup
         self.keyboard_listener = keyboard.Listener(
-            on_press=self._pynput_on_press,
-            on_release=self._pynput_on_release
+            on_press=self._on_key_press,
+            on_release=self._on_key_release
         )
         self.keyboard_listener_thread = threading.Thread(target=self.keyboard_listener.start)
-        self.keyboard_listener_thread.daemon = True # Allow the main program to exit even if this thread is running
+        self.keyboard_listener_thread.daemon = True  # Allow the main program to exit even if this thread is running
         self.keyboard_listener_thread.start()
         print("pynput keyboard listener started.")
 
         # Track ctrl key state for crouch spread
         self.ctrl_pressed = False
 
-        # New: pynput mouse listener setup
+        # New pynput mouse listener setup
         self.mouse_listener = mouse.Listener(
-            on_click=self._pynput_on_click
+            on_move=self._on_mouse_move,
+            on_click=self._on_mouse_click,
+            on_scroll=self._on_mouse_scroll
         )
         self.mouse_listener_thread = threading.Thread(target=self.mouse_listener.start)
-        self.mouse_listener_thread.daemon = True # Allow the main program to exit
+        self.mouse_listener_thread.daemon = True  # Allow the main program to exit
         self.mouse_listener_thread.start()
         print("pynput mouse listener started.")
 
@@ -149,6 +220,10 @@ class CrosshairOverlay:
         # Start checking game status
         self._check_game_status()
 
+    def _lerp(self, current, target, speed):
+        """Linear interpolation between current and target values."""
+        return current + (target - current) * speed
+
     def _setup_windows_overlay(self):
         """Applies Windows-specific settings for click-through."""
         hwnd = user32.GetParent(self.root.winfo_id())
@@ -161,6 +236,89 @@ class CrosshairOverlay:
 
         user32.SetWindowLongA(hwnd, GWL_EXSTYLE, new_style)
         user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
+    def _setup_input_listeners(self):
+        """Set up enhanced input listeners for keyboard and mouse."""
+        # Keyboard listener
+        self.keyboard_listener = keyboard.Listener(
+            on_press=self._on_key_press,
+            on_release=self._on_key_release
+        )
+        
+        # Mouse listener
+        self.mouse_listener = mouse.Listener(
+            on_move=self._on_mouse_move,
+            on_click=self._on_mouse_click,
+            on_scroll=self._on_mouse_scroll
+        )
+        
+        # Start listeners in separate threads
+        self.keyboard_listener_thread = threading.Thread(
+            target=self.keyboard_listener.start,
+            daemon=True
+        )
+        self.mouse_listener_thread = threading.Thread(
+            target=self.mouse_listener.start,
+            daemon=True
+        )
+        
+        self.keyboard_listener_thread.start()
+        self.mouse_listener_thread.start()
+
+    def _on_key_press(self, key):
+        """Enhanced key press handler."""
+        try:
+            key_char = key.char.lower()
+        except AttributeError:
+            key_char = str(key).replace('Key.', '').lower()
+
+        # Add key to input_state keys and modifiers immediately
+        self.input_state['keys'].add(key_char)
+        modifier_keys = {'ctrl', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r', 'alt', 'alt_l', 'alt_r'}
+        if key_char in modifier_keys:
+            self.input_state['modifiers'].add(key_char)
+
+        # Handle specific key bindings immediately
+        if key_char == str(self.key_bindings['toggle_menu']).replace('Key.', '').lower():
+            self.root.after(0, self._toggle_customization_menu)
+        elif key_char == str(self.key_bindings['quit']).replace('Key.', '').lower():
+            self.root.after(0, self.quit_overlay)
+
+        # Update movement state immediately
+        self._update_movement_state()
+
+    def _on_key_release(self, key):
+        """Enhanced key release handler."""
+        try:
+            key_char = key.char.lower()
+        except AttributeError:
+            key_char = str(key).replace('Key.', '').lower()
+
+        # Remove key from input_state keys and modifiers immediately
+        self.input_state['keys'].discard(key_char)
+        modifier_keys = {'ctrl', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r', 'alt', 'alt_l', 'alt_r'}
+        if key_char in modifier_keys:
+            self.input_state['modifiers'].discard(key_char)
+
+        # Update movement state immediately
+        self._update_movement_state()
+
+    def _on_mouse_move(self, x, y):
+        """Enhanced mouse movement handler."""
+        self.input_state['mouse_position'] = (x, y)
+        # You could add mouse movement-based features here
+
+    def _on_mouse_click(self, x, y, button, pressed):
+        """Enhanced mouse click handler."""
+        button_name = str(button).replace('Button.', '') # e.g., 'Button.left' -> 'left'
+        
+        # Schedule the update on the Tkinter main thread
+        self.root.after_idle(lambda: self._process_mouse_event(button_name, pressed))
+
+    def _on_mouse_scroll(self, x, y, dx, dy):
+        """Enhanced mouse scroll handler."""
+        # You could add scroll-based features here
+        pass
 
     def _is_process_running(self, process_name):
         """Checks if a process with the given name is currently running."""
@@ -211,10 +369,12 @@ class CrosshairOverlay:
             "jitter_enabled": True,
             "jitter_amount": 5,
             "jitter_speed": 1,
-            "jitter_offset": 1,
+            "jitter_offset": 0,
             "jitter_mode": "random",
-            # New clickthrough setting
-            "clickthrough_enabled": True
+            # Dynamic length parameter
+            "dynamic_length_enabled": True,
+            # Lerp speed parameter
+            "lerp_speed": 0.2
         }
 
         if not os.path.exists(self.config_path):
@@ -236,6 +396,10 @@ class CrosshairOverlay:
         with open(self.config_path, "r") as f:
             config = json.load(f)
         
+        # Set base_gap equal to the gap from config
+        self.gap = config["gap"]
+        self.base_gap = self.gap  # base_gap should equal gap
+
         # Tkinter uses hex color codes, and doesn't directly support alpha in line colors.
         # We'll convert RGB to hex and ignore alpha for line drawing, as the window transparency
         # is handled by -transparentcolor.
@@ -243,9 +407,8 @@ class CrosshairOverlay:
         self.outline_color = self._rgb_to_hex(config["outline_color"][:3])
         self.line_thickness = config["line_thickness"]
         self.outline_thickness = config["outline_thickness"]
-        self.gap = config["gap"]
-        # Renamed self.spread to self.segment_length to reflect its new meaning
-        self.segment_length = config["length"] 
+        # self.gap = config["gap"]
+        self.base_segment_length = config["length"]
         self.show_outline = config["show_outline"]
         # Movement Spread parameters
         self.movement_spread_enabled = config["movement_spread_enabled"]
@@ -264,102 +427,188 @@ class CrosshairOverlay:
         self.crouch_spread_enabled = config.get("crouch_spread_enabled", False)
         self.crouch_spread_amount = config.get("crouch_spread_amount", 5)
         self.crouch_spread_speed = config.get("crouch_spread_speed", 2)
-        # jitter parameters
+        # Jitter parameters
         self.jitter_enabled = config["jitter_enabled"]
         self.jitter_amount = config["jitter_amount"]
         self.jitter_speed = config["jitter_speed"]
-        self.jitter_offset = config["jitter_offset"]
+        self.jitter_offset = 0  # Initialize current jitter offset
         self.jitter_mode = config.get("jitter_mode", "random")
-        # Clickthrough parameter
-        self.clickthrough_enabled = config.get("clickthrough_enabled", True)
-        
-        # Store base values for dynamic spread calculation
-        self.base_gap = self.gap
-        # Renamed self.base_length to self.base_segment_length
-        self.base_segment_length = self.segment_length
+        self.jitter_direction_x = 1
+        self.jitter_direction_y = 1
 
-        # Rebind keys after loading config, in case the dynamic spread key changed
-        # (No longer needed for WASD with pynput, but kept for future potential Tkinter bindings)
-        # self.rebind_keys() # This method is now effectively a no-op for WASD
+        # Lerp Param
+        self.lerp_speed = config.get("lerp_speed", 0.1)
+        
+        # Dynamic length parameter
+        self.dynamic_length_enabled = config.get("dynamic_length_enabled", True)
+        
+        # Initialize jitter position variables if not already set
+        if not hasattr(self, 'jitter_x'):
+            self.jitter_x = 0
+        if not hasattr(self, 'jitter_y'):
+            self.jitter_y = 0
 
     def _rgb_to_hex(self, rgb):
         """Converts an RGB tuple to a Tkinter-compatible hex color string."""
         return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
 
     def draw_crosshair(self):
-        # Only draw if the game is running
+        """Draw the crosshair with current settings."""
         if not self.game_running:
             self.canvas.delete("all")
             return
 
-        self.canvas.delete("all") # Clear previous drawings
-
+        self.canvas.delete("all")
         center_x = self.screen_width // 2
         center_y = self.screen_height // 2
 
-        # Add jitter offset if jitter enabled and mouse button pressed
-        jitter_x = 0
-        jitter_y = 0
-        # Change condition to apply jitter if enabled regardless of mouse buttons pressed
-        if self.jitter_enabled:
-            max_jitter = int(self.jitter_offset)
-            if self.jitter_mode == "random":
-                jitter_x = self.random.randint(-max_jitter, max_jitter)
-                jitter_y = self.random.randint(-max_jitter, max_jitter)
-            elif self.jitter_mode == "up":
-                jitter_x = 0
-                jitter_y = -self.random.randint(0, max_jitter)
-            elif self.jitter_mode == "sideways":
-                jitter_x = self.random.randint(-max_jitter, max_jitter)
-                jitter_y = 0
-            else:
-                # Default to random if unknown mode
-                jitter_x = self.random.randint(-max_jitter, max_jitter)
-                jitter_y = self.random.randint(-max_jitter, max_jitter)
+        # Apply recoil offset
+        center_y += self.recoil_offset
 
-        center_x += jitter_x
-        center_y += jitter_y
-        
-        # Apply current dynamic spread offset to both gap and segment length
-        current_gap = self.base_gap + self.current_spread_offset
-        current_segment_length = self.base_segment_length + self.current_spread_offset
+        # Apply jitter offset
+        center_x += int(self.jitter_x)
+        center_y += int(self.jitter_y)
 
-        # Calculate the outer end of the crosshair arm from the center
-        # This is the start of the segment (current_gap) plus the length of the segment (current_segment_length)
-        outer_arm_end = current_gap + current_segment_length
+        # Use lerped values for gap and length
+        current_gap = self.current_gap
+        current_length = self.current_length
 
-        # Horizontal segments
-        left_start = (center_x - outer_arm_end, center_y)
-        left_end = (center_x - current_gap, center_y)
-        right_start = (center_x + current_gap, center_y)
-        right_end = (center_x + outer_arm_end, center_y)
-
-        # Vertical segments
-        top_start = (center_x, center_y - outer_arm_end)
-        top_end = (center_x, center_y - current_gap)
-        bottom_start = (center_x, center_y + current_gap)
-        bottom_end = (center_x, center_y + outer_arm_end)
-
+        # Calculate segment endpoints
+        outer_arm_end = current_gap + current_length
         segments = [
-            (left_start, left_end),
-            (right_start, right_end),
-            (top_start, top_end),
-            (bottom_start, bottom_end)
+            ((center_x - outer_arm_end, center_y), (center_x - current_gap, center_y)),  # Left
+            ((center_x + current_gap, center_y), (center_x + outer_arm_end, center_y)),   # Right
+            ((center_x, center_y - outer_arm_end), (center_x, center_y - current_gap)), # Top
+            ((center_x, center_y + current_gap), (center_x, center_y + outer_arm_end))   # Bottom
         ]
-        
+
         # Draw outline if enabled
         if self.show_outline:
             for start, end in segments:
-                self.canvas.create_line(start[0], start[1], end[0], end[1], 
-                                        fill=self.outline_color, width=self.outline_thickness)
+                self.canvas.create_line(*start, *end, 
+                                      fill=self.outline_color, 
+                                      width=self.outline_thickness)
         
         # Draw main crosshair
         for start, end in segments:
-            self.canvas.create_line(start[0], start[1], end[0], end[1], 
-                                    fill=self.crosshair_color, width=self.line_thickness)
+            self.canvas.create_line(*start, *end, 
+                                  fill=self.crosshair_color, 
+                                  width=self.line_thickness)
+
+    def update_overlay(self):
+        """Redraws the crosshair and schedules the next update."""
+        # Determine the appropriate speed based on the current state
+        if self.is_counter_strafing and self.counter_strafe_enabled:
+            current_speed = self.counter_strafe_reduction_speed
+        elif self.click_spread_enabled and (
+            (self.click_spread_button == "both" and 
+             ("left" in self.input_state['mouse'] or 
+              "right" in self.input_state['mouse'])) or
+            (self.click_spread_button == "left" and 
+             "left" in self.input_state['mouse']) or
+            (self.click_spread_button == "right" and 
+             "right" in self.input_state['mouse'])
+        ):
+            current_speed = self.click_spread_speed
+        elif self.crouch_spread_enabled and ('ctrl' in self.input_state['keys'] or 
+                                            'ctrl_l' in self.input_state['keys'] or
+                                            'ctrl_r' in self.input_state['keys']):
+            current_speed = self.crouch_spread_speed
+        else:
+            current_speed = self.movement_spread_speed
+
+        # Calculate the lerp factor based on the current speed, clamp between 0 and 1
+        lerp_factor = min(current_speed * self.lerp_speed, 1.0)
+
+        # Update recoil if shooting
+        if self.click_spread_enabled and (
+            (self.click_spread_button == "both" and 
+             ("left" in self.input_state['mouse'] or 
+              "right" in self.input_state['mouse'])) or
+            (self.click_spread_button == "left" and 
+             "left" in self.input_state['mouse']) or
+            (self.click_spread_button == "right" and 
+             "right" in self.input_state['mouse'])
+        ):
+            self.target_recoil_offset = -self.recoil_amount
+        else:
+            self.target_recoil_offset = 0
+
+        # Apply recoil lerping
+        if self.target_recoil_offset < self.recoil_offset:
+            # Moving up (recoil)
+            self.recoil_offset = self._lerp(
+                self.recoil_offset,
+                self.target_recoil_offset,
+                self.recoil_speed
+            )
+        else:
+            # Moving down (recovery)
+            self.recoil_offset = self._lerp(
+                self.recoil_offset,
+                self.target_recoil_offset,
+                self.recoil_recovery_speed
+            )
+
+        # Update current_spread_offset with lerping
+        self.current_spread_offset = self._lerp(
+            self.current_spread_offset,
+            self.target_spread_offset,
+            lerp_factor
+        )
+
+        # Calculate target gap (base gap + current spread offset)
+        target_gap = self.base_gap + self.current_spread_offset
+        self.current_gap = self._lerp(
+            self.current_gap,
+            target_gap,
+            lerp_factor
+        )
+
+        # Update length based on dynamic_length_enabled setting
+        if self.dynamic_length_enabled:
+            self.current_length = self._lerp(
+                self.current_length,
+                self.base_segment_length + self.current_spread_offset,
+                lerp_factor
+            )
+        else:
+            self.current_length = self.base_segment_length
+
+        # Jitter animation update
+        if self.jitter_enabled and len(self.input_state['mouse']) > 0:
+            import math
+            # Increase jitter offset by jitter_speed, wrap around 2*pi
+            self.jitter_offset += self.jitter_speed
+            if self.jitter_offset > 2 * math.pi:
+                self.jitter_offset -= 2 * math.pi
+
+            # Calculate target jitter x and y offsets based on jitter_mode
+            if self.jitter_mode == "random":
+                target_jitter_x = self.random.uniform(-self.jitter_amount, self.jitter_amount)
+                target_jitter_y = self.random.uniform(-self.jitter_amount, self.jitter_amount)
+            elif self.jitter_mode == "up":
+                target_jitter_x = 0
+                target_jitter_y = self.jitter_amount * math.sin(self.jitter_offset)
+            elif self.jitter_mode == "sideways":
+                target_jitter_x = self.jitter_amount * math.sin(self.jitter_offset)
+                target_jitter_y = 0
+            else:
+                target_jitter_x = 0
+                target_jitter_y = 0
+
+            # Lerp jitter_x and jitter_y towards target values for smooth jitter
+            self.jitter_x = self._lerp(self.jitter_x, target_jitter_x, self.lerp_speed)
+            self.jitter_y = self._lerp(self.jitter_y, target_jitter_y, self.lerp_speed)
+        else:
+            self.jitter_x = 0
+            self.jitter_y = 0
+
+        self.draw_crosshair()
+        self.root.after(16, self.update_overlay)  # Aim for ~60 FPS
 
     def _toggle_customization_menu(self, event=None):
-        """Opens or brings to front the customization menu."""
+        """Opens or brings to the front the customization menu."""
         if not self.menu_open:
             self.customization_menu = CustomizationMenu(self.root, self, self.config_path)
             self.menu_open = True
@@ -384,171 +633,125 @@ class CrosshairOverlay:
         print("Rebinding keys (WASD/Mouse handled by pynput).")
         # No Tkinter unbind/bind for WASD/Mouse here anymore.
 
-    def _pynput_on_press(self, key):
-        """Callback for pynput global keyboard press events."""
-        try:
-            key_char = key.char.lower()
-        except AttributeError:
-            # Special keys (e.g., Shift, Control) don't have a .char attribute
-            key_char = str(key).replace('Key.', '').lower() # e.g., 'Key.shift' -> 'shift'
-
-        # Track ctrl key state for crouch spread
-        if key_char == "ctrl_l" or key_char == "ctrl_r" or key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
-            self.ctrl_pressed = True
-
-        if key_char in ['w', 'a', 's', 'd']:
-            # Schedule the update on the Tkinter main thread
-            self.root.after_idle(lambda: self._handle_wasd_press(key_char))
-
-    def _pynput_on_release(self, key):
-        """Callback for pynput global keyboard release events."""
-        try:
-            key_char = key.char.lower()
-        except AttributeError:
-            key_char = str(key).replace('Key.', '').lower()
-
-        # Track ctrl key state for crouch spread
-        if key_char == "ctrl_l" or key_char == "ctrl_r" or key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
-            self.ctrl_pressed = False
-
-        if key_char in ['w', 'a', 's', 'd']:
-            # Schedule the update on the Tkinter main thread
-            self.root.after_idle(lambda: self._handle_wasd_release(key_char))
-
-    def _pynput_on_click(self, x, y, button, pressed):
-        """Callback for pynput global mouse click events."""
-        button_name = str(button).replace('Button.', '') # e.g., 'Button.left' -> 'left'
-        
-        # Schedule the update on the Tkinter main thread
-        self.root.after_idle(lambda: self._handle_mouse_click(button_name, pressed))
-
-    def _handle_wasd_press(self, key_char):
-        """Handles WASD key presses for movement spread and counter-strafe (called on Tkinter thread)."""
-        if key_char not in ['w', 'a', 's', 'd']:
-            return
-
-        # Check for counter-strafe
-        if self.counter_strafe_enabled and key_char in self.opposite_keys:
-            opposite_key = self.opposite_keys[key_char]
-            if opposite_key in self.wasd_keys_pressed:
-                self.is_counter_strafing = True
-            else:
-                self.is_counter_strafing = False # Reset if previous was not a counter-strafe
-
-        self.wasd_keys_pressed.add(key_char)
-        self.last_movement_key = key_char # Keep track of the last pressed key
-
-        self._update_target_spread()
-
-    def _handle_wasd_release(self, key_char):
-        """Handles WASD key releases for movement spread and counter-strafe (called on Tkinter thread)."""
-        if key_char not in ['w', 'a', 's', 'd']:
-            return
-
-        if key_char in self.wasd_keys_pressed:
-            self.wasd_keys_pressed.remove(key_char)
-        
-        # If the released key was the one causing a counter-strafe, or if no movement keys are left
-        # reset counter-strafe state.
-        if not self.wasd_keys_pressed:
-            self.is_counter_strafing = False
-            self.last_movement_key = None
-        elif self.is_counter_strafing and self.last_movement_key == key_char:
-            # If the key that initiated the counter-strafe is released,
-            # and its opposite is still held, we are no longer counter-strafing.
-            # This is a simplified logic, more complex scenarios might need more state.
-            if self.opposite_keys.get(key_char) in self.wasd_keys_pressed:
-                 self.is_counter_strafing = False
-
-        self._update_target_spread()
-
-    def _handle_mouse_click(self, button_name, pressed):
-        """Handles mouse button presses/releases for click spread (called on Tkinter thread)."""
+    def _process_key_event(self, key_char, pressed):
+        """Process key events in the Tkinter main thread."""
+        modifier_keys = {'ctrl', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r', 'alt', 'alt_l', 'alt_r'}
         if pressed:
-            self.mouse_buttons_pressed.add(button_name)
+            self.input_state['keys'].add(key_char)
+            self.input_state['last_key'] = key_char
+            if key_char in modifier_keys:
+                self.input_state['modifiers'].add(key_char)
         else:
-            if button_name in self.mouse_buttons_pressed:
-                self.mouse_buttons_pressed.remove(button_name)
+            self.input_state['keys'].discard(key_char)
+            if key_char in modifier_keys:
+                self.input_state['modifiers'].discard(key_char)
         
+        # Handle specific key bindings
+        if key_char == str(self.key_bindings['toggle_menu']).replace('Key.', '').lower():
+            self._toggle_customization_menu()
+        elif key_char == str(self.key_bindings['quit']).replace('Key.', '').lower():
+            self.quit_overlay()
+        
+        # Update movement state
+        self._update_movement_state()
+
+    def _process_mouse_event(self, button_name, pressed):
+        """Process mouse events in the Tkinter main thread."""
+        if pressed:
+            self.input_state['mouse'].add(button_name)
+            self.input_state['last_mouse'] = button_name
+        else:
+            self.input_state['mouse'].discard(button_name)
+        
+        # Update target spread
+        self._update_target_spread()
+
+    def _update_movement_state(self):
+        """Update movement-related state based on current input."""
+        # Reset counter-strafe state
+        self.is_counter_strafing = False
+
+        #print(f"Keys pressed for movement state: {self.input_state['keys']}")
+
+        # Check for counter-strafe by directly checking opposite key pairs
+        if self.counter_strafe_enabled:
+            opposite_pairs = [('w', 's'), ('a', 'd')]
+            for key1, key2 in opposite_pairs:
+                if key1 in self.input_state['keys'] and key2 in self.input_state['keys']:
+                    self.is_counter_strafing = True
+                    print(f"Counter-strafing detected with keys: {key1} and {key2}")
+                    break
+        
+        #print(f"Counter-strafing state: {self.is_counter_strafing}")
+
+        # Update target spread
         self._update_target_spread()
 
     def _update_target_spread(self):
-        """Determines the target spread based on movement and click state."""
-        movement_target_spread = 0
-        if self.movement_spread_enabled:
-            if self.is_counter_strafing and self.counter_strafe_enabled:
-                movement_target_spread = self.counter_strafe_min_spread
-            elif self.wasd_keys_pressed:
-                movement_target_spread = self.movement_spread_amount
+        """Enhanced target spread calculation."""
+        # Start with base gap as the minimum spread
+        current_spread = self.base_gap
         
-        click_target_spread = 0
+        # Movement spread (adds to base gap)
+        movement_keys_pressed = any(
+            key_char in self.input_state['keys'] 
+            for key_char in self.movement_key_map
+        )
+        # Remove debug print for movement spread
+        # print(f"Movement spread enabled: {self.movement_spread_enabled}, Movement keys pressed: {movement_keys_pressed}")
+        if self.movement_spread_enabled and movement_keys_pressed:
+            if self.is_counter_strafing:
+                # Apply counter-strafe reduction
+                current_spread += max(
+                    self.movement_spread_amount - self.counter_strafe_reduction_speed,
+                    self.counter_strafe_min_spread
+                )
+            else:
+                current_spread += self.movement_spread_amount
+        
+        # Click spread (adds to current spread)
         if self.click_spread_enabled:
             trigger_button = self.click_spread_button
-            if trigger_button == "left" and "left" in self.mouse_buttons_pressed:
-                click_target_spread = self.click_spread_amount
-            elif trigger_button == "right" and "right" in self.mouse_buttons_pressed:
-                click_target_spread = self.click_spread_amount
-            elif trigger_button == "both" and ("left" in self.mouse_buttons_pressed or "right" in self.mouse_buttons_pressed):
-                click_target_spread = self.click_spread_amount
-
-        crouch_target_spread = 0
-        if self.crouch_spread_enabled and self.ctrl_pressed:
-            # Reduce spread by crouch_spread_amount but not below zero
-            crouch_target_spread = -self.crouch_spread_amount
+            if (trigger_button == "both" and 
+                ("left" in self.input_state['mouse'] or 
+                 "right" in self.input_state['mouse'])):
+                current_spread = max(current_spread, self.base_gap + self.click_spread_amount)
+            elif (trigger_button == "left" and 
+                  "left" in self.input_state['mouse']):
+                current_spread = max(current_spread, self.base_gap + self.click_spread_amount)
+            elif (trigger_button == "right" and 
+                  "right" in self.input_state['mouse']):
+                current_spread = max(current_spread, self.base_gap + self.click_spread_amount)
         
-        # The overall target spread is the maximum of movement spread and click spread, then adjusted by crouch spread
-        base_spread = max(movement_target_spread, click_target_spread)
-        self.target_spread_offset = max(base_spread + crouch_target_spread, 0)
+        # Crouch spread (reduces from total spread) - apply after all other spreads
+        if self.crouch_spread_enabled and ('ctrl' in self.input_state['keys'] or 
+                                          'ctrl_l' in self.input_state['keys'] or
+                                          'ctrl_r' in self.input_state['keys']):
+            # Remove debug print for crouch spread
+            # print(f"Crouch spread active. Keys: {self.input_state['keys']}")
+            current_spread = max(current_spread - self.crouch_spread_amount, self.base_gap)
+        else:
+            # print(f"Crouch spread inactive. Keys: {self.input_state['keys']}")
+            pass
+        
+        # Calculate final spread offset (total spread minus base gap)
+        self.target_spread_offset = current_spread - self.base_gap
 
     def _apply_clickthrough_setting(self):
         """Apply the clickthrough window style based on current setting."""
         if sys.platform == "win32":
-            hwnd = user32.GetParent(self.root.winfo_id())
-            ex_style = user32.GetWindowLongA(hwnd, GWL_EXSTYLE)
-            if self.clickthrough_enabled:
-                new_style = ex_style | WS_EX_LAYERED | WS_EX_TRANSPARENT
-            else:
-                new_style = (ex_style | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT
-            user32.SetWindowLongA(hwnd, GWL_EXSTYLE, new_style)
-            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            self._setup_windows_overlay()
 
-    def update_overlay(self):
-        """Redraws the crosshair and schedules the next update."""
-        # Determine the speed for interpolation
-        # If counter-strafing, use reduction speed. Otherwise, use the faster of movement/click speeds if active.
-        current_speed = self.movement_spread_speed # Default to movement speed
-        
-        if self.is_counter_strafing and self.counter_strafe_enabled:
-            current_speed = self.counter_strafe_reduction_speed
-        elif self.target_spread_offset > self.current_spread_offset: # Expanding
-            if self.click_spread_enabled and (self.click_spread_button == "both" and ("left" in self.mouse_buttons_pressed or "right" in self.mouse_buttons_pressed) or \
-                                              self.click_spread_button == "left" and "left" in self.mouse_buttons_pressed or \
-                                              self.click_spread_button == "right" and "right" in self.mouse_buttons_pressed):
-                current_speed = self.click_spread_speed
-            else:
-                current_speed = self.movement_spread_speed
-        elif self.target_spread_offset < self.current_spread_offset: # Contracting
-            # When contracting, use the faster of the two speeds to return to base
-            current_speed = self.click_spread_speed
-
-
-        # Update current_spread_offset towards target_spread_offset
-        if self.current_spread_offset < self.target_spread_offset:
-            self.current_spread_offset = min(self.current_spread_offset + current_speed, self.target_spread_offset)
-        elif self.current_spread_offset > self.target_spread_offset:
-            self.current_spread_offset = max(self.current_spread_offset - current_speed, self.target_spread_offset)
-
-        # Update jitter offset magnitude
-        if self.jitter_enabled:
-            if self.mouse_buttons_pressed:
-                # Increase jitter offset up to max jitter amount
-                self.jitter_offset = min(self.jitter_offset + self.jitter_speed, self.jitter_amount)
-            else:
-                # Decrease jitter offset down to zero
-                self.jitter_offset = max(self.jitter_offset - self.jitter_speed, 0)
-
-        self.draw_crosshair()
-        self.root.after(16, self.update_overlay) # Aim for ~60 FPS (1000ms / 60 frames = ~16.6ms)
+    def _get_current_input_state(self):
+        """Get a snapshot of the current input state."""
+        return {
+            'keys': set(self.input_state['keys']),
+            'mouse': set(self.input_state['mouse']),
+            'modifiers': set(self.input_state['modifiers']),
+            'last_key': self.input_state['last_key'],
+            'last_mouse': self.input_state['last_mouse'],
+            'mouse_position': self.input_state['mouse_position']
+        }
 
     def run(self):
         self.update_overlay() # Start the drawing loop
