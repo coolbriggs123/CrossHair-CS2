@@ -118,7 +118,10 @@ class CustomizationMenu(tk.Toplevel):
                     "jitter_amount": 2,
                     "jitter_speed": 0.1,
                     "jitter_offset": 1,
-                    "jitter_mode": "random"
+                    "jitter_mode": "random",
+                    "clickthrough_enabled": True,
+                    "dynamic_length_enabled": True,
+                    "lerp_speed": 0.2
                 },
                 "Classic": {
                     "crosshair_color": [255, 255, 255, 255],
@@ -145,7 +148,10 @@ class CustomizationMenu(tk.Toplevel):
                     "jitter_amount": 2,
                     "jitter_speed": 0.1,
                     "jitter_offset": 1,
-                    "jitter_mode": "random"
+                    "jitter_mode": "random",
+                    "clickthrough_enabled": True,
+                    "dynamic_length_enabled": True,
+                    "lerp_speed": 0.2
                 }
             }
         }
@@ -169,68 +175,23 @@ class CustomizationMenu(tk.Toplevel):
         self.click_spread_amount_var = tk.IntVar(value=self.config["click_spread_amount"])
         self.click_spread_speed_var = tk.IntVar(value=self.config["click_spread_speed"])
         self.click_spread_button_var = tk.StringVar(value=self.config["click_spread_button"])
-        self.crouch_spread_enabled_var = tk.BooleanVar(value=self.config.get("crouch_spread_enabled", False))
-        self.crouch_spread_amount_var = tk.IntVar(value=self.config.get("crouch_spread_amount", 5))
-        self.crouch_spread_speed_var = tk.IntVar(value=self.config.get("crouch_spread_speed", 2))
+        # Remove crouch spread variables as per user request
+        # self.crouch_spread_enabled_var = tk.BooleanVar(value=self.config.get("crouch_spread_enabled", False))
+        # self.crouch_spread_amount_var = tk.IntVar(value=self.config.get("crouch_spread_amount", 5))
+        # self.crouch_spread_speed_var = tk.IntVar(value=self.config.get("crouch_spread_speed", 2))
         self.jitter_enabled_var = tk.BooleanVar(value=self.config.get("jitter_enabled", True))
         self.jitter_amount_var = tk.IntVar(value=self.config.get("jitter_amount", 2))
         self.jitter_speed_var = tk.DoubleVar(value=self.config.get("jitter_speed", 0.1))
         self.jitter_offset_var = tk.IntVar(value=self.config.get("jitter_offset", 1))
         self.jitter_mode_var = tk.StringVar(value=self.config.get("jitter_mode", "random"))
         self.current_preset_var = tk.StringVar(value=self.config.get("current_preset", "Default"))
+        self.clickthrough_enabled_var = tk.BooleanVar(value=self.config.get("clickthrough_enabled", True))
+        self.dynamic_length_enabled_var = tk.BooleanVar(value=self.config.get("dynamic_length_enabled", True))
+        self.lerp_speed_var = tk.DoubleVar(value=self.config.get("lerp_speed", 0.2))
+        self.recoil_amount_var = tk.IntVar(value=self.config.get("recoil_amount", 10))
+        self.recoil_speed_var = tk.DoubleVar(value=self.config.get("recoil_speed", 0.5))
+        self.recoil_recovery_speed_var = tk.DoubleVar(value=self.config.get("recoil_recovery_speed", 0.2))
 
-    def _create_widgets(self):
-        """Creates and lays out the widgets in the menu with tabs."""
-        main_frame = ttk.Frame(self, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Create notebook for tabs with custom styling
-        self.notebook = ttk.Notebook(main_frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # Create tabs
-        crosshair_tab = ttk.Frame(self.notebook)
-        movement_tab = ttk.Frame(self.notebook)
-        counter_strafe_tab = ttk.Frame(self.notebook)
-        click_spread_tab = ttk.Frame(self.notebook)
-        crouch_spread_tab = ttk.Frame(self.notebook)
-        jitter_tab = ttk.Frame(self.notebook)
-        presets_tab = ttk.Frame(self.notebook)
-        
-        self.notebook.add(crosshair_tab, text="Crosshair")
-        self.notebook.add(movement_tab, text="Movement Spread")
-        self.notebook.add(counter_strafe_tab, text="Counter-Strafe")
-        self.notebook.add(click_spread_tab, text="Click Spread")
-        self.notebook.add(crouch_spread_tab, text="Crouch Spread")
-        self.notebook.add(jitter_tab, text="Jitter")
-        self.notebook.add(presets_tab, text="Presets")
-        
-        # Crosshair tab
-        self._create_crosshair_tab(crosshair_tab)
-        
-        # Movement Spread tab
-        self._create_movement_spread_tab(movement_tab)
-        
-        # Counter-strafe tab
-        self._create_counter_strafe_tab(counter_strafe_tab)
-        
-        # Click Spread tab
-        self._create_click_spread_tab(click_spread_tab)
-        
-        # Crouch Spread tab
-        self._create_crouch_spread_tab(crouch_spread_tab)
-        
-        # Jitter tab
-        self._create_jitter_tab(jitter_tab)
-        
-        # Presets tab
-        self._create_presets_tab(presets_tab)
-        
-        # Bottom buttons
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=10)
-        ttk.Button(button_frame, text="Close Menu", command=self._on_close).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Close App", command=self._close_app).pack(side=tk.RIGHT, padx=5)
 
     def _create_crosshair_tab(self, parent):
         """Create crosshair settings tab."""
@@ -274,6 +235,14 @@ class CustomizationMenu(tk.Toplevel):
         # Show outline checkbox
         ttk.Checkbutton(parent, text="Show Outline", variable=self.show_outline_var,
                         command=self._update_and_save_config).pack(anchor=tk.W, pady=5, fill=tk.X)
+        #lerp speed spinbox
+        create_spinbox(parent, "Transition Speed:", self.lerp_speed_var, from_=0.1, to_=1, increment=.1)
+
+        # Add dynamic length toggle
+        ttk.Checkbutton(parent, 
+                       text="Enable Dynamic Length", 
+                       variable=self.dynamic_length_enabled_var,
+                       command=self._update_and_save_config).pack(anchor=tk.W, pady=5, fill=tk.X)
 
     def _create_movement_spread_tab(self, parent):
         """Create movement spread settings tab."""
@@ -291,7 +260,7 @@ class CustomizationMenu(tk.Toplevel):
             return spinbox
 
         create_spinbox(parent, "Spread Amount:", self.movement_spread_amount_var, from_=0, to_=50)
-        create_spinbox(parent, "Spread Speed:", self.movement_spread_speed_var, from_=1, to_=10)
+        create_spinbox(parent, "Spread Speed:", self.movement_spread_speed_var, from_=0.1, to_=10, increment=0.1)
 
     def _create_counter_strafe_tab(self, parent):
         """Create counter-strafe settings tab."""
@@ -308,7 +277,6 @@ class CustomizationMenu(tk.Toplevel):
             var.trace_add('write', lambda *args: self._update_and_save_config())
             return spinbox
 
-        create_spinbox(parent, "Reduction Speed:", self.counter_strafe_reduction_speed_var, from_=1, to_=20)
         create_spinbox(parent, "Min Spread:", self.counter_strafe_min_spread_var, from_=0, to_=10)
 
     def _create_click_spread_tab(self, parent):
@@ -327,7 +295,6 @@ class CustomizationMenu(tk.Toplevel):
             return spinbox
 
         create_spinbox(parent, "Spread Amount:", self.click_spread_amount_var, from_=0, to_=50)
-        create_spinbox(parent, "Spread Speed:", self.click_spread_speed_var, from_=1, to_=10)
         
         # Button selection
         button_frame = ttk.Frame(parent)
@@ -338,23 +305,22 @@ class CustomizationMenu(tk.Toplevel):
         self.click_button_dropdown.pack(side=tk.RIGHT)
         self.click_button_dropdown.bind("<<ComboboxSelected>>", lambda e: self._update_and_save_config())
 
-    def _create_crouch_spread_tab(self, parent):
-        """Create crouch spread settings tab."""
-        ttk.Checkbutton(parent, text="Enable Crouch Spread", variable=self.crouch_spread_enabled_var,
-                        command=self._update_and_save_config).pack(anchor=tk.W, pady=2, fill=tk.X)
-        
-        def create_spinbox(parent, label_text, var, from_=0, to_=100, increment=1):
-            frame = ttk.Frame(parent)
-            frame.pack(fill=tk.BOTH, expand=True, pady=5)
-            ttk.Label(frame, text=label_text).pack(side=tk.LEFT, fill=tk.X, expand=True)
-            spinbox = ttk.Spinbox(frame, textvariable=var, from_=from_, to_=to_, increment=increment,
-                                  command=self._update_and_save_config)
-            spinbox.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-            var.trace_add('write', lambda *args: self._update_and_save_config())
-            return spinbox
-
-        create_spinbox(parent, "Spread Amount:", self.crouch_spread_amount_var, from_=0, to_=50)
-        create_spinbox(parent, "Spread Speed:", self.crouch_spread_speed_var, from_=1, to_=10)
+    # def _create_crouch_spread_tab(self, parent):
+    #    """Create crouch spread settings tab."""
+    #    ttk.Checkbutton(parent, text="Enable Crouch Spread", variable=self.crouch_spread_enabled_var,
+    #                    command=self._update_and_save_config).pack(anchor=tk.W, pady=2, fill=tk.X)
+    #    
+    #    def create_spinbox(parent, label_text, var, from_=0, to_=100, increment=1):
+    #        frame = ttk.Frame(parent)
+    #        frame.pack(fill=tk.BOTH, expand=True, pady=5)
+    #        ttk.Label(frame, text=label_text).pack(side=tk.LEFT, fill=tk.X, expand=True)
+    #        spinbox = ttk.Spinbox(frame, textvariable=var, from_=from_, to_=to_, increment=increment,
+    #                              command=self._update_and_save_config)
+    #        spinbox.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+    #       var.trace_add('write', lambda *args: self._update_and_save_config())
+    #       return spinbox
+    #
+    #  create_spinbox(parent, "Spread Amount:", self.crouch_spread_amount_var, from_=0, to_=50)
 
     def _create_jitter_tab(self, parent):
         """Create jitter settings tab."""
@@ -372,7 +338,6 @@ class CustomizationMenu(tk.Toplevel):
             return spinbox
 
         create_jitter_spinbox(parent, "Jitter Amount (pixels):", self.jitter_amount_var, from_=0, to_=20)
-        create_jitter_spinbox(parent, "Jitter Speed:", self.jitter_speed_var, from_=1, to_=10, increment=0.01)
         create_jitter_spinbox(parent, "Jitter Offset:", self.jitter_offset_var, from_=0, to_=10)
         
         # Jitter mode dropdown
@@ -399,6 +364,90 @@ class CustomizationMenu(tk.Toplevel):
         # Preset description
         ttk.Label(parent, text="Presets allow you to save and load different crosshair configurations").pack(pady=5)
 
+    def _create_settings_tab(self, parent):
+        """Create settings tab with clickthrough option."""
+        ttk.Checkbutton(parent, text="Enable Clickthrough", variable=self.clickthrough_enabled_var,
+                      command=self._update_and_save_config).pack(anchor=tk.W, pady=5, fill=tk.X)
+
+    def _create_recoil_tab(self, parent):
+        """Create recoil settings tab."""
+        def create_spinbox(parent, label_text, var, from_, to_, increment):
+            frame = ttk.Frame(parent)
+            frame.pack(fill=tk.BOTH, expand=True, pady=5)
+            ttk.Label(frame, text=label_text).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            spinbox = ttk.Spinbox(frame, textvariable=var, from_=from_, to_=to_, increment=increment,
+                                  command=self._update_and_save_config)
+            spinbox.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+            var.trace_add('write', lambda *args: self._update_and_save_config())
+            return spinbox
+
+        create_spinbox(parent, "Recoil Amount:", self.recoil_amount_var, from_=0, to_=50, increment=1)
+        create_spinbox(parent, "Recoil Speed:", self.recoil_speed_var, from_=0.01, to_=5, increment=0.01)
+        create_spinbox(parent, "Recoil Recovery Speed:", self.recoil_recovery_speed_var, from_=0.01, to_=5, increment=0.01)
+
+    def _create_widgets(self):
+        """Creates and lays out the widgets in the menu with tabs."""
+        main_frame = ttk.Frame(self, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create notebook for tabs with custom styling
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Create tabs
+        crosshair_tab = ttk.Frame(self.notebook)
+        movement_tab = ttk.Frame(self.notebook)
+        counter_strafe_tab = ttk.Frame(self.notebook)
+        click_spread_tab = ttk.Frame(self.notebook)
+        crouch_spread_tab = ttk.Frame(self.notebook)
+        jitter_tab = ttk.Frame(self.notebook)
+        recoil_tab = ttk.Frame(self.notebook)
+        presets_tab = ttk.Frame(self.notebook)
+        settings_tab = ttk.Frame(self.notebook)  # New settings tab
+        
+        self.notebook.add(crosshair_tab, text="Crosshair")
+        self.notebook.add(movement_tab, text="Movement Spread")
+        self.notebook.add(counter_strafe_tab, text="Counter-Strafe")
+        self.notebook.add(click_spread_tab, text="Click Spread")
+        #self.notebook.add(crouch_spread_tab, text="Crouch Spread")
+        self.notebook.add(jitter_tab, text="Jitter")
+        self.notebook.add(recoil_tab, text="Recoil")
+        self.notebook.add(presets_tab, text="Presets")
+        self.notebook.add(settings_tab, text="Settings")  # Add settings tab
+        
+        # Crosshair tab
+        self._create_crosshair_tab(crosshair_tab)
+        
+        # Movement Spread tab
+        self._create_movement_spread_tab(movement_tab)
+        
+        # Counter-strafe tab
+        self._create_counter_strafe_tab(counter_strafe_tab)
+        
+        # Click Spread tab
+        self._create_click_spread_tab(click_spread_tab)
+        
+        # Crouch Spread tab
+        #self._create_crouch_spread_tab(crouch_spread_tab)
+        
+        # Jitter tab
+        self._create_jitter_tab(jitter_tab)
+        
+        # Recoil tab
+        self._create_recoil_tab(recoil_tab)
+        
+        # Presets tab
+        self._create_presets_tab(presets_tab)
+        
+        # Settings tab
+        self._create_settings_tab(settings_tab)
+    
+        # Bottom buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        ttk.Button(button_frame, text="Close Menu", command=self._on_close).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close App", command=self._close_app).pack(side=tk.RIGHT, padx=5)
+
     def _apply_preset(self):
         """Apply selected preset to current configuration."""
         preset_name = self.current_preset_var.get()
@@ -422,14 +471,17 @@ class CustomizationMenu(tk.Toplevel):
             self.click_spread_amount_var.set(preset["click_spread_amount"])
             self.click_spread_speed_var.set(preset["click_spread_speed"])
             self.click_spread_button_var.set(preset["click_spread_button"])
-            self.crouch_spread_enabled_var.set(preset["crouch_spread_enabled"])
-            self.crouch_spread_amount_var.set(preset["crouch_spread_amount"])
-            self.crouch_spread_speed_var.set(preset["crouch_spread_speed"])
+            #self.crouch_spread_enabled_var.set(preset["crouch_spread_enabled"])
+            #self.crouch_spread_amount_var.set(preset["crouch_spread_amount"])
+            #self.crouch_spread_speed_var.set(preset["crouch_spread_speed"])
             self.jitter_enabled_var.set(preset["jitter_enabled"])
             self.jitter_amount_var.set(preset["jitter_amount"])
             self.jitter_speed_var.set(preset["jitter_speed"])
             self.jitter_offset_var.set(preset["jitter_offset"])
             self.jitter_mode_var.set(preset["jitter_mode"])
+            self.clickthrough_enabled_var.set(preset["clickthrough_enabled"])
+            self.dynamic_length_enabled_var.set(preset["dynamic_length_enabled"])
+            self.lerp_speed_var.set(preset["lerp_speed"])
             
             self._update_color_previews()
             self._update_and_save_config()
@@ -457,14 +509,17 @@ class CustomizationMenu(tk.Toplevel):
                 "click_spread_amount": self.click_spread_amount_var.get(),
                 "click_spread_speed": self.click_spread_speed_var.get(),
                 "click_spread_button": self.click_spread_button_var.get(),
-                "crouch_spread_enabled": self.crouch_spread_enabled_var.get(),
-                "crouch_spread_amount": self.crouch_spread_amount_var.get(),
-                "crouch_spread_speed": self.crouch_spread_speed_var.get(),
+                #"crouch_spread_enabled": self.crouch_spread_enabled_var.get(),
+                #"crouch_spread_amount": self.crouch_spread_amount_var.get(),
+                #"crouch_spread_speed": self.crouch_spread_speed_var.get(),
                 "jitter_enabled": self.jitter_enabled_var.get(),
                 "jitter_amount": self.jitter_amount_var.get(),
                 "jitter_speed": self.jitter_speed_var.get(),
                 "jitter_offset": self.jitter_offset_var.get(),
-                "jitter_mode": self.jitter_mode_var.get()
+                "jitter_mode": self.jitter_mode_var.get(),
+                "clickthrough_enabled": self.clickthrough_enabled_var.get(),
+                "dynamic_length_enabled": self.dynamic_length_enabled_var.get(),
+                "lerp_speed": self.lerp_speed_var.get()
             }
             
             # Save to presets
@@ -480,6 +535,7 @@ class CustomizationMenu(tk.Toplevel):
                 json.dump(self.config, f, indent=4)
                 
             self.overlay_instance.load_config()
+            self.overlay_instance._apply_clickthrough_setting()  # Apply clickthrough setting
             self.overlay_instance.draw_crosshair()
 
     def _update_widgets_from_config(self):
@@ -501,15 +557,18 @@ class CustomizationMenu(tk.Toplevel):
         self.click_spread_amount_var.set(self.config["click_spread_amount"])
         self.click_spread_speed_var.set(self.config["click_spread_speed"])
         self.click_spread_button_var.set(self.config["click_spread_button"])
-        self.crouch_spread_enabled_var.set(self.config.get("crouch_spread_enabled", False))
-        self.crouch_spread_amount_var.set(self.config.get("crouch_spread_amount", 5))
-        self.crouch_spread_speed_var.set(self.config.get("crouch_spread_speed", 2))
+        # self.crouch_spread_enabled_var.set(self.config.get("crouch_spread_enabled", False))
+        # self.crouch_spread_amount_var.set(self.config.get("crouch_spread_amount", 5))
+        # self.crouch_spread_speed_var.set(self.config.get("crouch_spread_speed", 2))
         self.jitter_enabled_var.set(self.config.get("jitter_enabled", True))
         self.jitter_amount_var.set(self.config.get("jitter_amount", 2))
         self.jitter_speed_var.set(self.config.get("jitter_speed", 0.1))
         self.jitter_offset_var.set(self.config.get("jitter_offset", 1))
         self.jitter_mode_var.set(self.config.get("jitter_mode", "random"))
         self.current_preset_var.set(self.config.get("current_preset", "Default"))
+        self.clickthrough_enabled_var.set(self.config.get("clickthrough_enabled", True))
+        self.dynamic_length_enabled_var.set(self.config.get("dynamic_length_enabled", True))
+        self.lerp_speed_var.set(self.config.get("lerp_speed", 0.2))
         
         self._update_color_previews()
 
@@ -539,7 +598,7 @@ class CustomizationMenu(tk.Toplevel):
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-    def _update_and_save_config(self):
+    def _update_and_save_config(self, *args):
         """Updates config dictionary from Tkinter variables, saves to file, and tells overlay to update."""
         # Ensure integer values from spinboxes are correctly parsed
         try:
@@ -556,10 +615,10 @@ class CustomizationMenu(tk.Toplevel):
             # Click Spread values
             self.config["click_spread_amount"] = self.click_spread_amount_var.get()
             self.config["click_spread_speed"] = self.click_spread_speed_var.get()
-            # Crouch Spread values
-            self.config["crouch_spread_enabled"] = self.crouch_spread_enabled_var.get()
-            self.config["crouch_spread_amount"] = self.crouch_spread_amount_var.get()
-            self.config["crouch_spread_speed"] = self.crouch_spread_speed_var.get()
+            # Remove crouch spread values as per user request
+            # self.config["crouch_spread_enabled"] = self.crouch_spread_enabled_var.get()
+            # self.config["crouch_spread_amount"] = self.crouch_spread_amount_var.get()
+            # self.config["crouch_spread_speed"] = self.crouch_spread_speed_var.get()
         except tk.TclError:
             # This can happen if the spinbox content is not a valid integer (e.g., empty string)
             print("Invalid numeric input detected. Skipping update.")
@@ -585,20 +644,26 @@ class CustomizationMenu(tk.Toplevel):
         self.config["click_spread_enabled"] = self.click_spread_enabled_var.get()
         self.config["click_spread_button"] = self.click_spread_button_var.get()
         # Crouch Spread boolean
-        self.config["crouch_spread_enabled"] = self.crouch_spread_enabled_var.get()
+        #self.config["crouch_spread_enabled"] = self.crouch_spread_enabled_var.get()
         # Jitter settings
         self.config["jitter_enabled"] = self.jitter_enabled_var.get()
         self.config["jitter_amount"] = self.jitter_amount_var.get()
         self.config["jitter_speed"] = self.jitter_speed_var.get()
         self.config["jitter_offset"] = self.jitter_offset_var.get()
         self.config["jitter_mode"] = self.jitter_mode_var.get()
+        # Clickthrough setting
+        self.config["clickthrough_enabled"] = self.clickthrough_enabled_var.get()
+        # Dynamic length setting
+        self.config["dynamic_length_enabled"] = self.dynamic_length_enabled_var.get()
+        self.config["lerp_speed"] = self.lerp_speed_var.get()
 
         # Save to file
         with open(self.config_path, "w") as f:
             json.dump(self.config, f, indent=4)
-
+        
         # Tell the overlay instance to reload its config and redraw
         self.overlay_instance.load_config() # This will now call rebind_keys internally
+        self.overlay_instance._apply_clickthrough_setting()  # Apply clickthrough setting
         self.overlay_instance.draw_crosshair() # Force redraw immediately
 
     def _on_close(self):
@@ -640,6 +705,9 @@ if __name__ == "__main__":
             self.click_spread_button = "left"
             self.base_gap = 5 # Needed for load_config to set
             self.base_length = 40 # Needed for load_config to set
+            self.clickthrough_enabled = True
+            self.dynamic_length_enabled = True
+            self.lerp_speed = 0.2
             print("DummyOverlay initialized.")
 
         def load_config(self):
@@ -662,6 +730,9 @@ if __name__ == "__main__":
             print(f"  Click Spread Amount: {self.click_spread_amount}")
             print(f"  Click Spread Speed: {self.click_spread_speed}")
             print(f"  Click Spread Button: {self.click_spread_button}")
+            print(f"  Clickthrough Enabled: {self.clickthrough_enabled}")
+            print(f"  Dynamic Length Enabled: {self.dynamic_length_enabled}")
+            print(f"  Lerp Speed: {self.lerp_speed}")
             self.rebind_keys() # Call rebind_keys on dummy too
 
         def draw_crosshair(self):
@@ -669,6 +740,9 @@ if __name__ == "__main__":
 
         def rebind_keys(self):
             print(f"DummyOverlay: Rebinding WASD keys and mouse.")
+
+        def _apply_clickthrough_setting(self):
+            print(f"DummyOverlay: Clickthrough setting applied: {self.clickthrough_enabled}")
 
         def quit_overlay(self):
             print("DummyOverlay: Application closed.")
